@@ -1,13 +1,10 @@
 package com.josefSistem.app_pdf.conversores;
 
+
 // ============================================
 // IMPORTS DO iTEXT 7 (CORRETOS!)
 // ============================================
 import com.itextpdf.html2pdf.HtmlConverter;
-import com.itextpdf.io.font.constants.StandardFontFamilies;
-import com.itextpdf.kernel.font.PdfFont;
-import com.itextpdf.kernel.font.PdfFontFactory;
-import com.itextpdf.kernel.geom.PageSize;
 import com.itextpdf.kernel.pdf.PdfDocument;
 import com.itextpdf.kernel.pdf.PdfWriter;
 import com.itextpdf.layout.Document;              // ✅ CORRETO: do iText
@@ -17,18 +14,10 @@ import com.itextpdf.io.image.ImageDataFactory;
 // ============================================
 // IMPORTS DO PDFBOX
 // ============================================
-import com.itextpdf.layout.element.Paragraph;
-import com.itextpdf.layout.properties.TextAlignment;
-import org.apache.pdfbox.cos.COSDocument;
-import org.apache.pdfbox.pdfparser.PDFParser;
 import org.apache.pdfbox.pdmodel.PDDocument;
 import org.apache.pdfbox.rendering.ImageType;
 import org.apache.pdfbox.rendering.PDFRenderer;
-import org.apache.pdfbox.text.PDFTextStripper;
 import org.apache.pdfbox.tools.imageio.ImageIOUtil;
-import org.apache.poi.xwpf.usermodel.XWPFDocument;
-import org.apache.poi.xwpf.usermodel.XWPFParagraph;
-import org.apache.poi.xwpf.usermodel.XWPFRun;
 import org.fit.pdfdom.PDFDomTree;
 import org.springframework.stereotype.Component;
 
@@ -45,6 +34,7 @@ public class ConvertPDF {
         try (
                 PDDocument pdf = PDDocument.load(new File(filename));
                 PrintWriter output = new PrintWriter("src/output/pdf.html", "utf-8")
+
         ) {
             new PDFDomTree().writeText(pdf, output);
             System.out.println("✅ Conversão concluída com sucesso: " + filename + " -> src/output/pdf.html");
@@ -138,142 +128,4 @@ public class ConvertPDF {
             e.printStackTrace();
         }
     }
-
-
-    public static void generateTxtFromPDF(String filename) {
-
-        // O bloco 'try-with-resources' garante que o PDDocument e o PrintWriter
-        // sejam fechados automaticamente, mesmo em caso de erro.
-        try (
-                // 1. CARREGAR O PDF: Abre e carrega o arquivo PDF.
-                PDDocument document = PDDocument.load(new File(filename));
-
-                // 2. CONFIGURAR A SAÍDA: Cria um PrintWriter para escrever o texto no arquivo.
-                PrintWriter pw = new PrintWriter("src/output/pdf.txt")
-        ) {
-            // 3. EXTRAIR O TEXTO:
-            // Cria um PDFTextStripper, a ferramenta do PDFBox para extração de texto.
-            PDFTextStripper pdfStripper = new PDFTextStripper();
-
-            // Extrai todo o texto do documento.
-            String parsedText = pdfStripper.getText(document);
-
-            // 4. ESCREVER A SAÍDA:
-            // Escreve o texto extraído no arquivo de saída (.txt).
-            pw.print(parsedText);
-
-            System.out.println("✅ Extração de texto para TXT concluída. Saída: src/output/pdf.txt");
-
-        } catch (IOException e) {
-            // 5. TRATAMENTO DE ERROS:
-            // Captura erros de I/O (carregar o PDF, escrever o TXT) ou erros internos do PDFBox.
-            System.err.println("❌ Erro durante a extração de texto do PDF:");
-            e.printStackTrace();
-        }
-    }
-
-    /**
-     * Converte um arquivo de texto simples (.txt) em um documento PDF, formatando
-     * o conteúdo em parágrafos e usando justificação de texto.
-     * <p>
-     * O arquivo de saída é salvo em "src/output/txt.pdf".
-     * Esta função usa o iText 7 Core, a versão moderna e segura da biblioteca.
-     * </p>
-     *
-     * @param inputFilename O nome base do arquivo de texto de entrada (ex: "documento.txt").
-     */
-    public static void generatePDFFromTxt(String inputFilename) {
-
-        String outputPath = "src/output/txt.pdf";
-
-        try (
-                FileOutputStream fos = new FileOutputStream(outputPath);
-                PdfWriter writer = new PdfWriter(fos);
-                PdfDocument pdf = new PdfDocument(writer);
-                Document document = new Document(pdf, PageSize.A4);
-
-                BufferedReader br = new BufferedReader(new FileReader(inputFilename))
-        ) {
-            float fontSize = 11f;
-
-            // 1. CRIA O OBJETO PDF FONT UMA VEZ
-            // Usamos a fonte padrão Helvetica que não precisa ser carregada do sistema de arquivos.
-            PdfFont font = PdfFontFactory.createFont(StandardFontFamilies.HELVETICA);
-
-            // 2. CONFIGURA AS PROPRIEDADES PADRÃO DO DOCUMENTO
-            document.setFont(font).setFontSize(fontSize);
-
-            String strLine;
-            while ((strLine = br.readLine()) != null) {
-                // 3. CRIA O PARÁGRAFO E APLICA JUSTIFICAÇÃO
-                Paragraph para = new Paragraph(strLine)
-                        // Não precisa de .setFont() e .setFontSize() aqui se já for definido no Document
-                        .setTextAlignment(TextAlignment.JUSTIFIED);
-
-                document.add(para);
-            }
-
-            document.close();
-
-            System.out.printf("✅ Conversão de TXT para PDF concluída: %s -> %s%n", inputFilename, outputPath);
-
-        } catch (IOException e) {
-            System.err.println("❌ Erro durante a conversão de TXT para PDF.");
-            System.err.println("Caminho do arquivo de entrada: " + inputFilename);
-            e.printStackTrace();
-        }
-    }
-
-    /**
-     * Converte o conteúdo textual de um arquivo PDF em um arquivo DOCX (Microsoft Word).
-     * <p>
-     * O DOCX resultante é salvo em "src/output/pdf.docx".
-     * Esta função utiliza Apache PDFBox para a extração de texto e Apache POI para a criação do arquivo DOCX.
-     * </p>
-     *
-     * @param inputFilename O caminho (path) completo ou relativo do arquivo PDF de entrada.
-     */
-    private static void generateDocxFromPDF(String inputFilename) {
-
-        String outputPath = "src/output/pdf.docx";
-
-        // 1. EXTRAÇÃO DE TEXTO DO PDF (usando Apache PDFBox)
-        String fullText;
-        try (PDDocument document = PDDocument.load(new File(inputFilename))) {
-
-            PDFTextStripper pdfStripper = new PDFTextStripper();
-            fullText = pdfStripper.getText(document);
-
-        } catch (IOException e) {
-            System.err.println("❌ Erro ao extrair texto do PDF com PDFBox.");
-            e.printStackTrace();
-            return; // Encerra o método se a extração falhar.
-        }
-
-        // 2. CRIAÇÃO DO DOCX (usando Apache POI)
-        // O bloco 'try-with-resources' garante o fechamento seguro do XWPFDocument e do FileOutputStream.
-        try (
-                XWPFDocument doc = new XWPFDocument();
-                FileOutputStream out = new FileOutputStream(outputPath)
-        ) {
-            // Cria um novo parágrafo e um "Run" para o texto
-            XWPFParagraph p = doc.createParagraph();
-            XWPFRun run = p.createRun();
-
-            // Adiciona o texto extraído.
-            // Nota: O método .setText(String) do POI lida com quebras de linha.
-            run.setText(fullText);
-
-            // Escreve o documento no FileOutputStream
-            doc.write(out);
-
-            System.out.printf("✅ Conversão de PDF para DOCX concluída. Saída: %s%n", outputPath);
-
-        } catch (IOException e) {
-            System.err.println("❌ Erro ao escrever o arquivo DOCX.");
-            e.printStackTrace();
-        }
-    }
-
-
 }

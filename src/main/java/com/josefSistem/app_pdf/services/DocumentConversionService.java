@@ -19,6 +19,9 @@ import org.springframework.web.multipart.MultipartFile;
 
 import java.io.File;
 import java.io.IOException;
+import java.io.PrintWriter;
+import java.io.FileInputStream;
+import java.io.FileOutputStream;
 import java.net.MalformedURLException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -131,22 +134,44 @@ public class DocumentConversionService {
 
         DocumentEntity entity = findEntityById(id);
 
+        log.info("Documento encontrado: ID={}, Status={}, OutputPath={}",
+                entity.getId(), entity.getStatus(), entity.getOutputPath());
+
         if (entity.getStatus() != ConversionStatus.COMPLETED) {
-            throw new IllegalStateException("Conversão ainda não foi concluída");
+            throw new IllegalStateException("Conversão ainda não foi concluída. Status atual: " + entity.getStatus());
+        }
+
+        if (entity.getOutputPath() == null || entity.getOutputPath().isEmpty()) {
+            throw new IllegalStateException("Caminho do arquivo de saída não foi definido");
         }
 
         try {
-            Path filePath = Paths.get(entity.getOutputPath());
-            Resource resource = new UrlResource(filePath.toUri());
+            // Resolver caminho absoluto
+            Path filePath = Paths.get(entity.getOutputPath()).toAbsolutePath().normalize();
+            log.info("Caminho absoluto do arquivo: {}", filePath);
 
-            if (resource.exists() && resource.isReadable()) {
-                log.info("✅ Download iniciado: {}", resource.getFilename());
-                return resource;
-            } else {
-                throw new RuntimeException("Arquivo não encontrado ou não pode ser lido: " + filePath);
+            // Verificar se o arquivo existe
+            if (!Files.exists(filePath)) {
+                log.error("❌ Arquivo não existe: {}", filePath);
+                throw new RuntimeException("Arquivo não encontrado: " + filePath);
             }
+
+            // Verificar se é legível
+            if (!Files.isReadable(filePath)) {
+                log.error("❌ Arquivo não é legível: {}", filePath);
+                throw new RuntimeException("Arquivo não pode ser lido: " + filePath);
+            }
+
+            log.info("✅ Arquivo encontrado e legível: {}", filePath);
+
+            Resource resource = new UrlResource(filePath.toUri());
+            log.info("✅ Download iniciado: {}", resource.getFilename());
+
+            return resource;
+
         } catch (MalformedURLException e) {
-            throw new RuntimeException("Erro ao criar URL do arquivo", e);
+            log.error("❌ Erro ao criar URL do arquivo", e);
+            throw new RuntimeException("Erro ao criar URL do arquivo: " + e.getMessage(), e);
         }
     }
 
@@ -190,61 +215,119 @@ public class DocumentConversionService {
         DocumentType target = entity.getTargetType();
 
         log.debug("Realizando conversão: {} -> {}", source, target);
+        log.debug("Input: {}, Output: {}", inputPath, outputPath);
 
         switch (target) {
             case PDF:
-                convertToPDF(inputPath, source, request);
+                convertToPDF(inputPath, outputPath, source, request);
                 break;
 
             case HTML:
-                convertToHTML(inputPath, source);
+                convertToHTML(inputPath, outputPath, source);
                 break;
 
             case IMAGE_PNG:
             case IMAGE_JPG:
             case IMAGE_JPEG:
-                convertToImage(inputPath, source, target, request);
+                convertToImage(inputPath, outputPath, source, target, request);
                 break;
 
             default:
                 throw new IllegalArgumentException("Tipo de destino não suportado: " + target);
         }
 
+        // Verificar se o arquivo foi criado
+        if (!Files.exists(Paths.get(outputPath))) {
+            throw new RuntimeException("Arquivo de saída não foi gerado: " + outputPath);
+        }
+
         return outputPath;
     }
 
-    private void convertToPDF(String inputPath, DocumentType source, ConversionRequestDTO request) {
-        switch (source) {
-            case HTML:
-                ConvertPDF.generatePDFFromHTMLModern(inputPath);
-                break;
+    private void convertToPDF(String inputPath, String outputPath, DocumentType source, ConversionRequestDTO request) {
+        try {
+            switch (source) {
+                case HTML:
+                    // HTML -> PDF
+                    try (FileInputStream is = new FileInputStream(inputPath);
+                         FileOutputStream os = new FileOutputStream(outputPath)) {
+                        com.itextpdf.html2pdf.HtmlConverter.convertToPdf(is, os);
+                    }
+                    log.info("✅ Conversão HTML -> PDF concluída: {}", outputPath);
+                    break;
 
-            case IMAGE_PNG:
-            case IMAGE_JPG:
-            case IMAGE_JPEG:
-                String extension = source.getExtension();
-                ConvertPDF.generatePDFFromImage(removeExtension(inputPath), extension);
-                break;
+                case IMAGE_PNG:
+                case IMAGE_JPG:
+                case IMAGE_JPEG:
+                    // Imagem -> PDF
+                    String extension = source.getExtension();
+                    ConvertPDF.generatePDFFromImage(removeExtension(inputPath), extension);
 
-            default:
-                throw new IllegalArgumentException("Conversão não suportada: " + source + " -> PDF");
+                    // Mover arquivo gerado para outputPath
+                    String tempOutput = "src/output/" + extension + ".pdf";
+                    Files.move(Paths.get(tempOutput), Paths.get(outputPath),
+                            java.nio.file.StandardCopyOption.REPLACE_EXISTING);
+                    log.info("✅ Conversão Imagem -> PDF concluída: {}", outputPath);
+                    break;
+
+                default:
+                    throw new IllegalArgumentException("Conversão não suportada: " + source + " -> PDF");
+            }
+        } catch (IOException e) {
+            throw new RuntimeException("Erro na conversão para PDF: " + e.getMessage(), e);
         }
     }
 
-    private void convertToHTML(String inputPath, DocumentType source) {
+    private void convertToHTML(String inputPath, String outputPath, DocumentType source) {
         if (source != DocumentType.PDF) {
             throw new IllegalArgumentException("Conversão não suportada: " + source + " -> HTML");
         }
-        // Implementar conversão PDF -> HTML
-        throw new UnsupportedOperationException("Conversão PDF -> HTML ainda não implementada");
+
+        try {
+            // PDF -> HTML usando PDFDomTree
+            try (org.apache.pdfbox.pdmodel.PDDocument pdf =
+                         org.apache.pdfbox.pdmodel.PDDocument.load(new File(inputPath));
+                 PrintWriter output = new PrintWriter(outputPath, "utf-8")) {
+
+                new org.fit.pdfdom.PDFDomTree().writeText(pdf, output);
+            }
+            log.info("✅ Conversão PDF -> HTML concluída: {}", outputPath);
+
+        } catch (IOException e) {
+            throw new RuntimeException("Erro na conversão para HTML: " + e.getMessage(), e);
+        }
     }
 
-    private void convertToImage(String inputPath, DocumentType source, DocumentType target, ConversionRequestDTO request) {
+    private void convertToImage(String inputPath, String outputPath, DocumentType source,
+                                DocumentType target, ConversionRequestDTO request) {
         if (source != DocumentType.PDF) {
             throw new IllegalArgumentException("Conversão não suportada: " + source + " -> " + target);
         }
-        // Implementar conversão PDF -> Imagem
-        throw new UnsupportedOperationException("Conversão PDF -> Imagem ainda não implementada");
+
+        try {
+            String extension = target.getExtension();
+            int dpi = request.getDpi() != null ? request.getDpi() : 300;
+
+            // PDF -> Imagem usando PDFBox
+            try (org.apache.pdfbox.pdmodel.PDDocument document =
+                         org.apache.pdfbox.pdmodel.PDDocument.load(new File(inputPath))) {
+
+                org.apache.pdfbox.rendering.PDFRenderer pdfRenderer =
+                        new org.apache.pdfbox.rendering.PDFRenderer(document);
+
+                // Converter apenas a primeira página
+                java.awt.image.BufferedImage bim = pdfRenderer.renderImageWithDPI(
+                        0, dpi, org.apache.pdfbox.rendering.ImageType.RGB);
+
+                // Salvar no outputPath
+                org.apache.pdfbox.tools.imageio.ImageIOUtil.writeImage(
+                        bim, outputPath, dpi);
+            }
+            log.info("✅ Conversão PDF -> Imagem concluída: {}", outputPath);
+
+        } catch (IOException e) {
+            throw new RuntimeException("Erro na conversão para Imagem: " + e.getMessage(), e);
+        }
     }
 
     private void validateConversion(DocumentType source, DocumentType target) {
