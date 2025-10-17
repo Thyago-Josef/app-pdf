@@ -232,6 +232,10 @@ public class DocumentConversionService {
                 convertToImage(inputPath, outputPath, source, target, request);
                 break;
 
+            case WORD_DOCX:
+                convertToWord(inputPath, outputPath, source);
+                break;
+
             default:
                 throw new IllegalArgumentException("Tipo de destino não suportado: " + target);
         }
@@ -330,6 +334,142 @@ public class DocumentConversionService {
         }
     }
 
+    private void convertToWord(String inputPath, String outputPath, DocumentType source) {
+        try {
+            switch (source) {
+                case PDF:
+                    convertPdfToWord(inputPath, outputPath);
+                    break;
+
+                case HTML:
+                    convertHtmlToWord(inputPath, outputPath);
+                    break;
+
+                default:
+                    throw new IllegalArgumentException("Conversão não suportada: " + source + " -> DOCX");
+            }
+        } catch (IOException e) {
+            throw new RuntimeException("Erro na conversão para Word: " + e.getMessage(), e);
+        }
+    }
+
+    private void convertPdfToWord(String inputPath, String outputPath) throws IOException {
+        String tempHtmlPath = outputPath.replace(".docx", "_temp.html");
+
+        try (org.apache.pdfbox.pdmodel.PDDocument pdf =
+                     org.apache.pdfbox.pdmodel.PDDocument.load(new File(inputPath));
+             PrintWriter htmlOutput = new PrintWriter(tempHtmlPath, "utf-8")) {
+
+            new org.fit.pdfdom.PDFDomTree().writeText(pdf, htmlOutput);
+        }
+
+        convertHtmlToWord(tempHtmlPath, outputPath);
+        Files.deleteIfExists(Paths.get(tempHtmlPath));
+
+        log.info("✅ Conversão PDF -> DOCX concluída: {}", outputPath);
+    }
+
+    private void convertHtmlToWord(String inputPath, String outputPath) throws IOException {
+        try (org.apache.poi.xwpf.usermodel.XWPFDocument document =
+                     new org.apache.poi.xwpf.usermodel.XWPFDocument();
+             FileOutputStream out = new FileOutputStream(outputPath)) {
+
+            String htmlContent = new String(Files.readAllBytes(Paths.get(inputPath)), "UTF-8");
+
+            // Remover scripts e styles
+            htmlContent = htmlContent.replaceAll("(?s)<script[^>]*>.*?</script>", "");
+            htmlContent = htmlContent.replaceAll("(?s)<style[^>]*>.*?</style>", "");
+
+            // Extrair texto limpo
+            String textContent = htmlContent
+                    .replaceAll("<br\\s*/?>", "\n")
+                    .replaceAll("<p[^>]*>", "\n")
+                    .replaceAll("</p>", "\n")
+                    .replaceAll("<div[^>]*>", "\n")
+                    .replaceAll("</div>", "\n")
+                    .replaceAll("<[^>]*>", "")
+                    .replaceAll("&nbsp;", " ")
+                    .replaceAll("&amp;", "&")
+                    .replaceAll("&lt;", "<")
+                    .replaceAll("&gt;", ">")
+                    .replaceAll("&quot;", "\"")
+                    .replaceAll("\\s+", " ")
+                    .trim();
+
+            // Dividir em linhas
+            String[] lines = textContent.split("\n");
+
+            // Criar documento
+            for (String line : lines) {
+                String trimmedLine = line.trim();
+                if (!trimmedLine.isEmpty() && trimmedLine.length() > 1) {
+                    org.apache.poi.xwpf.usermodel.XWPFParagraph paragraph = document.createParagraph();
+                    org.apache.poi.xwpf.usermodel.XWPFRun run = paragraph.createRun();
+                    run.setText(trimmedLine);
+                    run.setFontSize(11);
+                    run.setFontFamily("Calibri");
+                }
+            }
+
+            // Metadados
+            document.createParagraph().createRun().addBreak();
+            org.apache.poi.xwpf.usermodel.XWPFParagraph infoPara = document.createParagraph();
+            infoPara.setAlignment(org.apache.poi.xwpf.usermodel.ParagraphAlignment.CENTER);
+            org.apache.poi.xwpf.usermodel.XWPFRun infoRun = infoPara.createRun();
+            infoRun.setText("Convertido de HTML por Document Conversion API");
+            infoRun.setFontSize(9);
+            infoRun.setColor("808080");
+            infoRun.setItalic(true);
+
+            document.write(out);
+        }
+
+        log.info("✅ Conversão HTML -> DOCX concluída: {}", outputPath);
+    }
+
+    private void convertWordToPdf(String inputPath, String outputPath) throws IOException {
+        String tempHtmlPath = outputPath.replace(".pdf", "_temp.html");
+
+        try (FileInputStream fis = new FileInputStream(inputPath);
+             org.apache.poi.xwpf.usermodel.XWPFDocument document =
+                     new org.apache.poi.xwpf.usermodel.XWPFDocument(fis);
+             FileOutputStream htmlOut = new FileOutputStream(tempHtmlPath)) {
+
+            StringBuilder html = new StringBuilder();
+            html.append("<!DOCTYPE html><html><head><meta charset='UTF-8'></head><body>");
+
+            for (org.apache.poi.xwpf.usermodel.XWPFParagraph para : document.getParagraphs()) {
+                String text = para.getText();
+                if (!text.trim().isEmpty()) {
+                    html.append("<p>").append(text).append("</p>");
+                }
+            }
+
+            for (org.apache.poi.xwpf.usermodel.XWPFTable table : document.getTables()) {
+                html.append("<table border='1'>");
+                for (org.apache.poi.xwpf.usermodel.XWPFTableRow row : table.getRows()) {
+                    html.append("<tr>");
+                    for (org.apache.poi.xwpf.usermodel.XWPFTableCell cell : row.getTableCells()) {
+                        html.append("<td>").append(cell.getText()).append("</td>");
+                    }
+                    html.append("</tr>");
+                }
+                html.append("</table>");
+            }
+
+            html.append("</body></html>");
+            htmlOut.write(html.toString().getBytes("UTF-8"));
+        }
+
+        try (FileInputStream is = new FileInputStream(tempHtmlPath);
+             FileOutputStream os = new FileOutputStream(outputPath)) {
+            com.itextpdf.html2pdf.HtmlConverter.convertToPdf(is, os);
+        }
+
+        Files.deleteIfExists(Paths.get(tempHtmlPath));
+        log.info("✅ Conversão DOCX -> PDF concluída: {}", outputPath);
+    }
+
     private void validateConversion(DocumentType source, DocumentType target) {
         if (source == target) {
             throw new IllegalArgumentException("Tipo de origem e destino não podem ser iguais");
@@ -348,6 +488,7 @@ public class DocumentConversionService {
             throw new RuntimeException("Erro ao salvar arquivo: " + e.getMessage(), e);
         }
     }
+
 
     private void createDirectoryIfNotExists(String dir) {
         try {
