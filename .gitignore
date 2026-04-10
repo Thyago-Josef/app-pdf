@@ -5,5 +5,18 @@ build/
 # Pastas de Saída (HTMLs Gerados)
 output/
 
+
+# Configurações do IntelliJ / IDEs
+.idea/
+*.iml
+out/
+gen/
+
+
 # Logs e outros
 *.log
+
+
+# Banco de dados H2 / Locais
+data/
+*.db
