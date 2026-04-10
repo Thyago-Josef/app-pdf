@@ -1,2 +1,5 @@
 /mvnw text eol=lf
 *.cmd text eol=crlf
+
+* linguist-vendored
+src/**/*.java linguist-detectable=true
