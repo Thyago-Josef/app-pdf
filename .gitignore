@@ -1,0 +1,9 @@
+# Arquivos de Build/Target
+target/
+build/
+
+# Pastas de Saída (HTMLs Gerados)
+output/
+
+# Logs e outros
+*.log

@@ -1,0 +1,304 @@
+package com.josefSistem.app_pdf.controller;
+
+import com.josefSistem.app_pdf.dto.ConversionRequestDTO;
+import com.josefSistem.app_pdf.dto.ConversionResponseDTO;
+import com.josefSistem.app_pdf.entities.DocumentEntity.ConversionStatus;
+import com.josefSistem.app_pdf.entities.DocumentEntity.DocumentType;
+import com.josefSistem.app_pdf.services.DocumentConversionService;
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.Parameter;
+import io.swagger.v3.oas.annotations.responses.ApiResponse;
+import io.swagger.v3.oas.annotations.responses.ApiResponses;
+import io.swagger.v3.oas.annotations.tags.Tag;
+import jakarta.validation.Valid;
+import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
+import org.springframework.core.io.Resource;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.HttpStatus;
+import org.springframework.http.MediaType;
+import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.*;
+import org.springframework.web.multipart.MultipartFile;
+import lombok.extern.slf4j.Slf4j;
+
+import java.io.BufferedReader;
+import java.io.InputStreamReader;
+import java.nio.file.Files;
+import java.nio.file.Paths;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+
+@RestController
+@RequestMapping("/api/documents")
+@RequiredArgsConstructor
+@CrossOrigin(origins = "*")
+@Slf4j
+@Tag(name = "Document Conversion", description = "APIs para conversão de documentos")
+public class DocumentConversionController {
+
+    private final DocumentConversionService conversionService;
+
+//    @PostMapping(value = "/convert", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+//    @Operation(summary = "Converter documento", description = "Converte um documento de um formato para outro")
+//    @ApiResponses(value = {
+//            @ApiResponse(responseCode = "201", description = "Conversão criada com sucesso"),
+//            @ApiResponse(responseCode = "400", description = "Requisição inválida"),
+//            @ApiResponse(responseCode = "500", description = "Erro interno no servidor")
+//    })
+//    public ResponseEntity<ConversionResponseDTO> convertDocument(
+//            @Parameter(description = "Arquivo a ser convertido", required = true)
+//            @RequestParam("file") MultipartFile file,
+//
+//            @Parameter(description = "Tipo do arquivo de origem (PDF, HTML, IMAGE_PNG, etc)", required = true)
+//            @RequestParam("sourceType") DocumentType sourceType,
+//
+//            @Parameter(description = "Tipo do arquivo de destino", required = true)
+//            @RequestParam("targetType") DocumentType targetType,
+//
+//            @Parameter(description = "DPI para conversão de imagens (padrão: 300)")
+//            @RequestParam(value = "dpi", required = false) Integer dpi,
+//
+//            @Parameter(description = "Comprimir saída")
+//            @RequestParam(value = "compress", required = false) Boolean compress) {
+//
+//        log.info("📥 POST /api/documents/convert - {} -> {}", sourceType, targetType);
+//
+//        ConversionRequestDTO request = ConversionRequestDTO.builder()
+//                .file(file)
+//                .sourceType(sourceType)
+//                .targetType(targetType)
+//                .dpi(dpi)
+//                .compressOutput(compress)
+//                .build();
+//
+//        ConversionResponseDTO response = conversionService.convertDocument(request);
+//
+//        return ResponseEntity.status(HttpStatus.CREATED).body(response);
+//    }
+
+    @PostMapping("/converterLibre")
+    public ResponseEntity<ConversionResponseDTO> convert(@ModelAttribute ConversionRequestDTO request) {
+        // O Spring Boot cuida do MultipartFile dentro do DTO
+        ConversionResponseDTO response = conversionService.convertDocument(request);
+        return ResponseEntity.ok(response);
+    }
+
+
+    @GetMapping("/{id}")
+    @Operation(summary = "Buscar conversão por ID", description = "Retorna os detalhes de uma conversão específica")
+    @ApiResponses(value = {
+            @ApiResponse(responseCode = "200", description = "Conversão encontrada"),
+            @ApiResponse(responseCode = "404", description = "Conversão não encontrada")
+    })
+    public ResponseEntity<ConversionResponseDTO> getConversion(
+            @Parameter(description = "ID da conversão", required = true)
+            @PathVariable Long id) {
+
+        log.info("📄 GET /api/documents/{}", id);
+        ConversionResponseDTO response = conversionService.getConversionById(id);
+        return ResponseEntity.ok(response);
+    }
+
+    @GetMapping
+    @Operation(summary = "Listar todas as conversões", description = "Retorna uma lista com todas as conversões realizadas")
+    @ApiResponse(responseCode = "200", description = "Lista retornada com sucesso")
+    public ResponseEntity<List<ConversionResponseDTO>> getAllConversions(
+            @Parameter(description = "Filtrar por status (PENDING, PROCESSING, COMPLETED, FAILED)")
+            @RequestParam(value = "status", required = false) ConversionStatus status) {
+
+        log.info("📋 GET /api/documents - Status: {}", status);
+
+        List<ConversionResponseDTO> responses = status != null
+                ? conversionService.getConversionsByStatus(status)
+                : conversionService.getAllConversions();
+
+        return ResponseEntity.ok(responses);
+    }
+
+    @GetMapping("/{id}/download")
+    @Operation(summary = "Download do arquivo convertido", description = "Faz o download do arquivo já convertido")
+    @ApiResponses(value = {
+            @ApiResponse(responseCode = "200", description = "Download iniciado"),
+            @ApiResponse(responseCode = "404", description = "Arquivo não encontrado"),
+            @ApiResponse(responseCode = "409", description = "Conversão ainda não concluída")
+    })
+    public ResponseEntity<Resource> downloadFile(
+            @Parameter(description = "ID da conversão", required = true)
+            @PathVariable Long id) {
+
+        log.info("⬇️ GET /api/documents/{}/download", id);
+
+        Resource resource = conversionService.downloadFile(id);
+
+        String fileName = resource.getFilename() != null ? resource.getFilename() : "download";
+
+        return ResponseEntity.ok()
+                .contentType(MediaType.APPLICATION_OCTET_STREAM)
+                .header(HttpHeaders.CONTENT_DISPOSITION,
+                        "attachment; filename=\"" + fileName + "\"")
+                .body(resource);
+    }
+
+    @DeleteMapping("/{id}")
+    @Operation(summary = "Deletar conversão", description = "Remove a conversão e seus arquivos associados")
+    @ApiResponses(value = {
+            @ApiResponse(responseCode = "204", description = "Conversão deletada com sucesso"),
+            @ApiResponse(responseCode = "404", description = "Conversão não encontrada")
+    })
+    public ResponseEntity<Void> deleteConversion(
+            @Parameter(description = "ID da conversão", required = true)
+            @PathVariable Long id) {
+
+        log.info("🗑️ DELETE /api/documents/{}", id);
+        conversionService.deleteConversion(id);
+        return ResponseEntity.noContent().build();
+    }
+
+    @GetMapping("/health")
+    @Operation(summary = "Health check", description = "Verifica se o serviço está funcionando")
+    @ApiResponse(responseCode = "200", description = "Serviço está funcionando")
+    public ResponseEntity<Map<String, Object>> health() {
+        log.debug("💚 GET /api/documents/health");
+
+        Map<String, Object> health = new HashMap<>();
+        health.put("status", "UP");
+        health.put("service", "Document Conversion Service");
+        health.put("timestamp", System.currentTimeMillis());
+
+        return ResponseEntity.ok(health);
+    }
+
+    @GetMapping("/stats")
+    @Operation(summary = "Estatísticas", description = "Retorna estatísticas sobre as conversões")
+    @ApiResponse(responseCode = "200", description = "Estatísticas retornadas")
+    public ResponseEntity<Map<String, Object>> getStats() {
+        log.info("📊 GET /api/documents/stats");
+
+        List<ConversionResponseDTO> all = conversionService.getAllConversions();
+
+        long completed = all.stream()
+                .filter(dto -> dto.getStatus() == ConversionStatus.COMPLETED)
+                .count();
+
+        long failed = all.stream()
+                .filter(dto -> dto.getStatus() == ConversionStatus.FAILED)
+                .count();
+
+        long processing = all.stream()
+                .filter(dto -> dto.getStatus() == ConversionStatus.PROCESSING)
+                .count();
+
+        long pending = all.stream()
+                .filter(dto -> dto.getStatus() == ConversionStatus.PENDING)
+                .count();
+
+        Map<String, Object> stats = new HashMap<>();
+        stats.put("total", all.size());
+        stats.put("completed", completed);
+        stats.put("failed", failed);
+        stats.put("processing", processing);
+        stats.put("pending", pending);
+        stats.put("successRate", all.isEmpty() ? 0 : (double) completed / all.size() * 100);
+
+        return ResponseEntity.ok(stats);
+    }
+
+    private String detectLibreOfficePath() {
+        // Verifique se o caminho da sua versão 25.8 é este:
+        String path = "C:\\Program Files\\LibreOffice\\program\\soffice.exe";
+
+        if (Files.exists(Paths.get(path))) {
+            return path;
+        }
+        throw new RuntimeException("LibreOffice não encontrado em: " + path);
+    }
+
+    private void executeLibreOffice(String inputPath, String outputDir) throws Exception {
+        String libreOfficePath = detectLibreOfficePath();
+
+        ProcessBuilder builder = new ProcessBuilder(
+                libreOfficePath,
+                "--headless",           // Não abre a interface gráfica
+                "--convert-to", "docx", // Formato de destino
+                "--outdir", outputDir,  // Pasta onde o arquivo será salvo
+                inputPath               // Caminho do PDF original
+        );
+
+        log.info("Executando: {} --headless --convert-to docx --outdir {} {}", libreOfficePath, outputDir, inputPath);
+
+        Process process = builder.start();
+
+        // Captura logs de erro do LibreOffice (importante para debug)
+        try (BufferedReader reader = new BufferedReader(new InputStreamReader(process.getInputStream()))) {
+            reader.lines().forEach(line -> log.debug("[LibreOffice] {}", line));
+        }
+
+        int exitCode = process.waitFor();
+        if (exitCode != 0) {
+            throw new RuntimeException("O LibreOffice falhou com código: " + exitCode);
+        }
+    }
+
+
+    @PostMapping(value = "/convert", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    @Operation(summary = "Converter documento", description = "Converte um documento de um formato para outro usando motor LibreOffice (estratégia de fluxo de texto)")
+    @ApiResponses(value = {
+            @ApiResponse(responseCode = "201", description = "Conversão concluída com sucesso"),
+            @ApiResponse(responseCode = "400", description = "Requisição inválida ou parâmetros incorretos"),
+            @ApiResponse(responseCode = "500", description = "Erro interno no processamento do LibreOffice")
+    })
+    public ResponseEntity<ConversionResponseDTO> convertDocumentp(
+            @Parameter(description = "Arquivo a ser convertido (PDF, etc)", required = true)
+            @RequestParam("file") MultipartFile file,
+
+            @Parameter(description = "Tipo do arquivo de origem", required = true)
+            @RequestParam("sourceType") DocumentType sourceType,
+
+            @Parameter(description = "Tipo do arquivo de destino (Ex: WORD_DOCX)", required = true)
+            @RequestParam("targetType") DocumentType targetType,
+
+            @Parameter(description = "DPI para conversão de imagens (padrão: 300)")
+            @RequestParam(value = "dpi", required = false) Integer dpi,
+
+            @Parameter(description = "Comprimir saída")
+            @RequestParam(value = "compress", required = false) Boolean compress) {
+
+        log.info("📥 POST /api/documents/convert - Recebido: {} -> {}", sourceType, targetType);
+
+        // Validando se o arquivo não está vazio antes de enviar para o serviço
+        if (file.isEmpty()) {
+            log.warn("⚠️ Tentativa de conversão com arquivo vazio.");
+            return ResponseEntity.badRequest().build();
+        }
+
+        try {
+            // Montando o DTO de requisição conforme o seu padrão
+            ConversionRequestDTO request = ConversionRequestDTO.builder()
+                    .file(file)
+                    .sourceType(sourceType)
+                    .targetType(targetType)
+                    .dpi(dpi != null ? dpi : 300) // Default 300
+                    .compressOutput(compress != null && compress) // Default false
+                    .build();
+
+            // O Service aqui executará a lógica de conversão dupla (PDF -> HTML -> DOCX)
+            ConversionResponseDTO response = conversionService.convertDocument(request);
+
+            log.info("✅ Conversão finalizada com sucesso para o arquivo: {}", file.getOriginalFilename());
+            return ResponseEntity.status(HttpStatus.CREATED).body(response);
+
+        } catch (Exception e) {
+            log.error("❌ Falha crítica na conversão do documento {}: {}", file.getOriginalFilename(), e.getMessage());
+
+            // Retornamos um DTO de resposta contendo o erro, se o seu padrão permitir
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).build();
+        }
+    }
+
+
+
+
+
+}
