@@ -1,6 +1,7 @@
 package com.josefSistem.app_pdf.services;
 
-import com.josefSistem.app_pdf.conversores.ConvertPDF;
+import com.josefSistem.app_pdf.services.conversions.ConversionStrategyManager;
+import com.josefSistem.app_pdf.services.conversions.ConvertPDF;
 import com.josefSistem.app_pdf.dto.ConversionRequestDTO;
 import com.josefSistem.app_pdf.dto.ConversionResponseDTO;
 import com.josefSistem.app_pdf.entities.DocumentEntity;
@@ -10,6 +11,7 @@ import com.josefSistem.app_pdf.mappers.DocumentMapper;
 import com.josefSistem.app_pdf.repositories.DocumentRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.core.io.Resource;
 import org.springframework.core.io.UrlResource;
@@ -24,7 +26,6 @@ import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.List;
 import java.util.UUID;
 
@@ -42,6 +43,11 @@ public class DocumentConversionService {
 
     @Value("${app.output.dir:output}")
     private String outputDir;
+
+    @Autowired
+    private ConversionStrategyManager strategyManager;
+
+
 
     /**
      * Converte um documento enviado pelo usuário
@@ -104,12 +110,15 @@ public class DocumentConversionService {
 
             String outputPath;
 
-            // --- O PULO DO GATO: Lógica de Decisão ---
-            if (request.getSourceType() == DocumentType.PDF && request.getTargetType() == DocumentType.WORD_DOCX) {
-                log.info("🎯 Aplicando estratégia de limpeza de caixas (PDF -> HTML -> DOCX)");
-                outputPath = performDoubleCleanConversion(inputPath, entity);
+            // ✅ BLOCO IF DENTRO DO MÉTODO
+            if (request.getSourceType() == DocumentType.PDF
+                    && request.getTargetType() == DocumentType.WORD_DOCX) {
+
+                log.info("🎯 Aplicando estratégia Docling -> Pandoc");
+                String absoluteOutputDir = new File(outputDir).getAbsolutePath();
+                outputPath = strategyManager.convert(inputPath, absoluteOutputDir);
+
             } else {
-                // Conversão padrão para outros tipos
                 outputPath = performConversion(inputPath, entity, request);
             }
 
@@ -904,6 +913,7 @@ public class DocumentConversionService {
         int exitCode = process.waitFor();
         if (exitCode != 0) throw new RuntimeException("Falha no passo de conversão. Código: " + exitCode);
     }
+
 
 
 }
