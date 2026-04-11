@@ -1,5 +1,14 @@
 /mvnw text eol=lf
 *.cmd text eol=crlf
 
-* linguist-vendored
+
+# NÃO use "*" aqui, especifique o que deve ser ignorado:
+.mvn/ linguist-vendored
+uploads/ linguist-vendored
+HELP.md linguist-vendored
+
+
+
+# Força a detecção do Java na pasta src
 src/**/*.java linguist-detectable=true
+src/**/*.java linguist-language=Java
