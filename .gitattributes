@@ -7,6 +7,10 @@
 uploads/ linguist-vendored
 HELP.md linguist-vendored
 
+# Ignora qualquer HTML da contagem
+*.html linguist-vendored
+*.html linguist-detectable=false
+
 
 
 # Força a detecção do Java na pasta src
