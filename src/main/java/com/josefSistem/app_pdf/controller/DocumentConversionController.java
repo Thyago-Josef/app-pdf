@@ -4,6 +4,7 @@ import com.josefSistem.app_pdf.dto.ConversionRequestDTO;
 import com.josefSistem.app_pdf.dto.ConversionResponseDTO;
 import com.josefSistem.app_pdf.entities.DocumentEntity.ConversionStatus;
 import com.josefSistem.app_pdf.entities.DocumentEntity.DocumentType;
+import com.josefSistem.app_pdf.entities.ConversionStrategy;
 import com.josefSistem.app_pdf.services.DocumentConversionService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
@@ -259,6 +260,9 @@ public class DocumentConversionController {
             @Parameter(description = "Tipo do arquivo de destino (Ex: WORD_DOCX)", required = true)
             @RequestParam("targetType") DocumentType targetType,
 
+            @Parameter(description = "Estratégia: PDF2DOCX (alta fidelidade) ou DOCLING (texto puro)")
+            @RequestParam(value = "conversionStrategy", required = false) ConversionStrategy conversionStrategy,
+
             @Parameter(description = "DPI para conversão de imagens (padrão: 300)")
             @RequestParam(value = "dpi", required = false) Integer dpi,
 
@@ -267,23 +271,21 @@ public class DocumentConversionController {
 
         log.info("📥 POST /api/documents/convert - Recebido: {} -> {}", sourceType, targetType);
 
-        // Validando se o arquivo não está vazio antes de enviar para o serviço
         if (file.isEmpty()) {
             log.warn("⚠️ Tentativa de conversão com arquivo vazio.");
             return ResponseEntity.badRequest().build();
         }
 
         try {
-            // Montando o DTO de requisição conforme o seu padrão
             ConversionRequestDTO request = ConversionRequestDTO.builder()
                     .file(file)
                     .sourceType(sourceType)
                     .targetType(targetType)
-                    .dpi(dpi != null ? dpi : 300) // Default 300
-                    .compressOutput(compress != null && compress) // Default false
+                    .conversionStrategy(conversionStrategy)
+                    .dpi(dpi != null ? dpi : 300)
+                    .compressOutput(compress != null && compress)
                     .build();
 
-            // O Service aqui executará a lógica de conversão dupla (PDF -> HTML -> DOCX)
             ConversionResponseDTO response = conversionService.convertDocument(request);
 
             log.info("✅ Conversão finalizada com sucesso para o arquivo: {}", file.getOriginalFilename());
@@ -291,8 +293,6 @@ public class DocumentConversionController {
 
         } catch (Exception e) {
             log.error("❌ Falha crítica na conversão do documento {}: {}", file.getOriginalFilename(), e.getMessage());
-
-            // Retornamos um DTO de resposta contendo o erro, se o seu padrão permitir
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).build();
         }
     }

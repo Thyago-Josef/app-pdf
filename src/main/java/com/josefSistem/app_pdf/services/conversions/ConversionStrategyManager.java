@@ -23,33 +23,49 @@ public class ConversionStrategyManager {
     }
 
     public String convert(String inputPath, String outputDir) {
-        String markdownPath = null;
+        return convert(inputPath, outputDir, "pdf2docx");
+    }
 
+    public String convert(String inputPath, String outputDir, String strategy) {
         try {
-            // PASSO 1: PDF -> Markdown via Docling
-            log.info("🔄 [Passo 1] PDF -> Markdown via Docling...");
-            markdownPath = docling.convertToMarkdown(inputPath, outputDir);
-
-            // PASSO 1.5: Limpa caracteres problemáticos do Markdown
-            log.info("🧹 [Passo 1.5] Limpando Markdown...");
-            cleanMarkdown(markdownPath);
-
-            // PASSO 2: Markdown -> DOCX via Pandoc
-            log.info("🔄 [Passo 2] Markdown -> DOCX via Pandoc...");
-            String docxPath = pandoc.convertMarkdownToDocx(markdownPath, outputDir);
-
-            return docxPath;
-
+            log.info("🔄 Iniciando conversão via {}...", strategy);
+            return docling.convert(inputPath, outputDir, strategy);
         } catch (Exception e) {
             log.error("❌ Conversão falhou: {}", e.getMessage());
             throw new RuntimeException("Falha na conversão: " + e.getMessage(), e);
-
-        } finally {
-            if (markdownPath != null) {
-                new File(markdownPath).delete();
-            }
         }
     }
+
+
+
+//    public String convert(String inputPath, String outputDir) {
+//        String markdownPath = null;
+//
+//        try {
+//            // PASSO 1: PDF -> Markdown via Docling
+//            log.info("🔄 [Passo 1] PDF -> Markdown via Docling...");
+//            markdownPath = docling.convertToMarkdown(inputPath, outputDir);
+//
+//            // PASSO 1.5: Limpa caracteres problemáticos do Markdown
+//            log.info("🧹 [Passo 1.5] Limpando Markdown...");
+//            cleanMarkdown(markdownPath);
+//
+//            // PASSO 2: Markdown -> DOCX via Pandoc
+//            log.info("🔄 [Passo 2] Markdown -> DOCX via Pandoc...");
+//            String docxPath = pandoc.convertMarkdownToDocx(markdownPath, outputDir);
+//
+//            return docxPath;
+//
+//        } catch (Exception e) {
+//            log.error("❌ Conversão falhou: {}", e.getMessage());
+//            throw new RuntimeException("Falha na conversão: " + e.getMessage(), e);
+//
+//        } finally {
+//            if (markdownPath != null) {
+//                new File(markdownPath).delete();
+//            }
+//        }
+//    }
 
     private void cleanMarkdown(String markdownPath) throws IOException {
         String content = Files.readString(Paths.get(markdownPath));

@@ -110,13 +110,16 @@ public class DocumentConversionService {
 
             String outputPath;
 
-            // ✅ BLOCO IF DENTRO DO MÉTODO
+            String strategy = request.getConversionStrategy() != null
+                    ? request.getConversionStrategy().getValue()
+                    : "pdf2docx";
+
             if (request.getSourceType() == DocumentType.PDF
                     && request.getTargetType() == DocumentType.WORD_DOCX) {
 
-                log.info("🎯 Aplicando estratégia Docling -> Pandoc");
+                log.info("🎯 Aplicando estratégia: {}", strategy);
                 String absoluteOutputDir = new File(outputDir).getAbsolutePath();
-                outputPath = strategyManager.convert(inputPath, absoluteOutputDir);
+                outputPath = strategyManager.convert(inputPath, absoluteOutputDir, strategy);
 
             } else {
                 outputPath = performConversion(inputPath, entity, request);
