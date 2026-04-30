@@ -61,10 +61,19 @@ public class DoclingConversionStrategy implements ConversionStrategy {
         String downloadUrl = responseBody.get("download_url");
         String fileId = responseBody.get("file_id");
 
-        byte[] fileBytes = restTemplate.getForObject(
+        ResponseEntity<byte[]> downloadResponse = restTemplate.exchange(
                 doclingServiceUrl + downloadUrl,
+                org.springframework.http.HttpMethod.GET,
+                null,
                 byte[].class
         );
+
+        byte[] fileBytes = downloadResponse.getBody();
+        log.info("📥 Baixados {} bytes de {}", fileBytes != null ? fileBytes.length : 0, doclingServiceUrl + downloadUrl);
+
+        if (fileBytes == null || fileBytes.length == 0) {
+            throw new RuntimeException("Arquivo baixado está vazio");
+        }
 
         String outputPath = outputDir + File.separator + fileId + ".docx";
         Files.write(Paths.get(outputPath), fileBytes);

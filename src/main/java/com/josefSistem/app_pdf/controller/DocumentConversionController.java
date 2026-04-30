@@ -281,7 +281,7 @@ public class DocumentConversionController {
                     .file(file)
                     .sourceType(sourceType)
                     .targetType(targetType)
-                    .conversionStrategy(conversionStrategy)
+                    .conversionStrategy(conversionStrategy != null ? conversionStrategy.toString() : "pdf2docx")
                     .dpi(dpi != null ? dpi : 300)
                     .compressOutput(compress != null && compress)
                     .build();

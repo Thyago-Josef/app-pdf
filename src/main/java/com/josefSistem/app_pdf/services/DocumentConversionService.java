@@ -111,7 +111,7 @@ public class DocumentConversionService {
             String outputPath;
 
             String strategy = request.getConversionStrategy() != null
-                    ? request.getConversionStrategy().getValue()
+                    ? request.getConversionStrategy()
                     : "pdf2docx";
 
             if (request.getSourceType() == DocumentType.PDF
@@ -308,7 +308,7 @@ public class DocumentConversionService {
      * Faz download do arquivo convertido
      */
     public Resource downloadFile(Long id) {
-        log.debug("Download solicitado para ID: {}", id);
+        log.info("Download solicitado para ID: {}", id);
 
         DocumentEntity entity = findEntityById(id);
 
